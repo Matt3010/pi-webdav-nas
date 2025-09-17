@@ -2,7 +2,7 @@
 # WebDAV Setup Script for Raspberry Pi (v24-EN - Multi-Root Support)
 # Usage:
 #   ./webdav_setup.sh raid   (Interactively create a RAID array)
-#   ./webdav_setup.sh        (Installs or updates the server with multiple roots)
+#   ./webdav_setup.sh        (Performs a safe cleanup AND reinstalls)
 #   ./webdav_setup.sh fresh  (Performs a safe cleanup AND reinstalls)
 #   ./webdav_setup.sh reset  (ONLY performs a safe cleanup)
 
@@ -110,9 +110,6 @@ ask_for_settings() {
     read -p "Enter the admin username [$ADMIN_USER]: " input
     ADMIN_USER=${input:-$ADMIN_USER}
     
-    read -p "Enter the full path for the password file [$PASSFILE]: " input
-    PASSFILE=${input:-$PASSFILE}
-    
     read -p "Enter the maximum file upload size (e.g., 100M, 2G) [$MAX_UPLOAD_SIZE]: " input
     MAX_UPLOAD_SIZE=${input:-$MAX_UPLOAD_SIZE}
     
@@ -133,9 +130,6 @@ ask_for_settings() {
     else
         AUTOINDEX_SETTING="off"
     fi
-    
-    read -p "Enter the default password for NEWLY created users [$DEFAULT_PASSWORD]: " input
-    DEFAULT_PASSWORD=${input:-$DEFAULT_PASSWORD}
     
     log "SUCCESS" "Configuration received."
 }
@@ -442,16 +436,12 @@ case "$1" in
     raid)
         run_raid_setup
         ;;
-    fresh)
-        ask_for_settings
-        run_cleanup
-        run_setup
-        ;;
     reset)
         run_cleanup
         ;;
-    *)
+    fresh | *)
         ask_for_settings
+        run_cleanup
         run_setup
         ;;
 esac
