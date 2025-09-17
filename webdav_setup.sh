@@ -151,10 +151,16 @@ run_raid_setup() {
     log "SUCCESS" "'mdadm' installed."
     
     log "INFO" "Scanning for available, non-boot disks..."
+    # Find the root disk to exclude it from the list of choices
     root_disk=$(findmnt -n -o SOURCE / | sed -E 's/p?[0-9]+$//' | sed 's,/dev/,,')
-    mapfile -t available_disks < <(lsblk -dno NAME,SIZE,TYPE | grep 'disk' | grep -v "$root_disk" | awk '{print "/dev/"$1, "(" $2 ")"}')
     
-    if [ ${#available_disks[@]} -eq 0 ]; then
+    # --- ROBUST DISK SELECTION LOGIC ---
+    # Create an array for display purposes (e.g., "/dev/sda (500G)")
+    mapfile -t display_disks < <(lsblk -dno NAME,SIZE,TYPE | grep 'disk' | grep -v "$root_disk" | awk '{print "/dev/"$1, "(" $2 ")"}')
+    # Create a parallel array with only the raw device paths (e.g., "/dev/sda")
+    mapfile -t actual_disks < <(lsblk -dno NAME,TYPE | grep 'disk' | grep -v "$root_disk" | awk '{print "/dev/"$1}')
+    
+    if [ ${#actual_disks[@]} -eq 0 ]; then
         log "ERROR" "No suitable non-boot disks were found to create a RAID array."
         log "INFO" "This is normal if you only have one disk (the boot disk) in your system."
         log "STEP" "You can proceed with a standard setup on your main disk by running:"
@@ -165,16 +171,20 @@ run_raid_setup() {
     log "STEP" "Please choose the disks to include in the array from the list below."
     PS3="Select a disk to add (or 'Done' to finish): "
     selected_disks=()
-    select disk_choice in "${available_disks[@]}" "Done"; do
+    select disk_choice in "${display_disks[@]}" "Done"; do
         if [ "$disk_choice" == "Done" ]; then
             break
+        # Check if the user's numeric choice ($REPLY) is valid
         elif [ -n "$disk_choice" ]; then
-            selected_disks+=("$(echo "$disk_choice" | awk '{print $1}')")
-            log "SUCCESS" "Added $(echo "$disk_choice" | awk '{print $1}'). Current selection: ${selected_disks[*]}"
+            # Get the actual device path from the parallel array using the selection index
+            selected_device="${actual_disks[$REPLY-1]}"
+            selected_disks+=("$selected_device")
+            log "SUCCESS" "Added ${selected_device}. Current selection: ${selected_disks[*]}"
         else
             log "WARN" "Invalid selection."
         fi
     done
+    # --- END OF ROBUST SELECTION LOGIC ---
     
     if [ ${#selected_disks[@]} -lt 2 ]; then
         log "ERROR" "You must select at least 2 disks. Aborting."
