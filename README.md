@@ -45,7 +45,7 @@ This script is designed to be a "one-stop shop" for setting up a robust WebDAV s
 Clone the repository or download the script file (`webdav_setup.sh`) to your home directory.
 
 ```bash
-wget [https://github.com/Matt3010/pi-webdav-nas/webdav_setup.sh](https://raw.githubusercontent.com/Matt3010/pi-webdav-nas/refs/heads/master/webdav_setup.sh)
+wget https://raw.githubusercontent.com/Matt3010/pi-webdav-nas/refs/heads/master/webdav_setup.sh
 ```
 
 ### \#\#\# 2. Make it Executable
