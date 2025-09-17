@@ -1,7 +1,3 @@
-Of course. Here is a complete and well-documented `README.md` file for your script, suitable for a GitHub project.
-
------
-
 # Raspberry Pi WebDAV Server Automation Script
 
 A comprehensive Bash script for deploying a secure, performant, and feature-rich WebDAV server on a Raspberry Pi or any Debian-based system. This script automates every step from package installation to advanced configuration, allowing you to set up a personal cloud storage solution in minutes.
