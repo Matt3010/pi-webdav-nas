@@ -1,8 +1,8 @@
 #!/bin/bash
-# WebDAV Setup Script for Raspberry Pi (v24-EN - Better RAID Failure Guidance)
+# WebDAV Setup Script for Raspberry Pi (v24-EN - Multi-Root Support)
 # Usage:
 #   ./webdav_setup.sh raid   (Interactively create a RAID array)
-#   ./webdav_setup.sh        (Installs or updates the server)
+#   ./webdav_setup.sh        (Installs or updates the server with multiple roots)
 #   ./webdav_setup.sh fresh  (Performs a safe cleanup AND reinstalls)
 #   ./webdav_setup.sh reset  (ONLY performs a safe cleanup)
 
@@ -57,13 +57,14 @@ log() {
 }
 
 # --- Default Configuration Variables ---
-WEBROOT="/srv/webdav"
-USERS=("user1" "user2" "admin")
+# These will be populated by ask_for_settings
+WEBROOTS=()
+WEBDAV_PORTS=()
+# Global settings
+USERS=("admin")
 ADMIN_USER="admin"
 PASSFILE="/etc/nginx/webdav.passwd"
-CONF_FILE="/etc/nginx/sites-available/webdav"
 LOG_DIR="/var/log/nginx"
-WEBDAV_PORT="8080"
 NGINX_ERROR_LOG_FILE="webdav_error.log"
 MANAGEMENT_SCRIPT="users.sh"
 MAX_UPLOAD_SIZE="100M"
@@ -76,20 +77,41 @@ DEFAULT_PASSWORD="password"
 # ==============================================================================
 
 ask_for_settings() {
+    # --- Per-Location Settings ---
     log "HEADER" "Interactive Configuration"
-    log "STEP" "Please provide your settings or press Enter to accept the defaults."
+    log "STEP" "You will now configure one or more WebDAV locations."
     
-    read -p "Enter the WebDAV root directory [$WEBROOT]: " input
-    WEBROOT=${input:-$WEBROOT}
-    
+    local counter=1
+    while true; do
+        log "CONFIG" "Configuring WebDAV Location #$counter"
+        
+        local default_root="/srv/webdav"
+        if [ "$counter" -gt 1 ]; then
+            default_root="/srv/webdav${counter}"
+        fi
+        read -p "Enter the root directory for this location [$default_root]: " input_root
+        WEBROOTS+=("${input_root:-$default_root}")
+        
+        local default_port=$((8079 + counter))
+        read -p "Enter the port for this location to listen on [$default_port]: " input_port
+        WEBDAV_PORTS+=("${input_port:-$default_port}")
+
+        read -p "Do you want to add another WebDAV location? (y/n) [n]: " add_another
+        if [[ ! "$add_another" =~ ^[yY]$ ]]; then
+            break
+        fi
+        counter=$((counter + 1))
+    done
+
+    # --- Global Settings ---
+    log "HEADER" "Global Settings"
+    log "STEP" "The following settings will apply to ALL configured locations."
+
     read -p "Enter the admin username [$ADMIN_USER]: " input
     ADMIN_USER=${input:-$ADMIN_USER}
     
     read -p "Enter the full path for the password file [$PASSFILE]: " input
     PASSFILE=${input:-$PASSFILE}
-    
-    read -p "Enter the port for WebDAV to listen on [$WEBDAV_PORT]: " input
-    WEBDAV_PORT=${input:-$WEBDAV_PORT}
     
     read -p "Enter the maximum file upload size (e.g., 100M, 2G) [$MAX_UPLOAD_SIZE]: " input
     MAX_UPLOAD_SIZE=${input:-$MAX_UPLOAD_SIZE}
@@ -116,33 +138,6 @@ ask_for_settings() {
     DEFAULT_PASSWORD=${input:-$DEFAULT_PASSWORD}
     
     log "SUCCESS" "Configuration received."
-}
-
-run_migration_if_needed() {
-    if [ ! -f "$CONF_FILE" ]; then
-        return 0
-    fi
-    
-    local old_webroot
-    old_webroot=$(grep -oP 'set \$user_root \K[^;]+' "$CONF_FILE" | xargs | sed 's/\/$//') || true
-    
-    if [ -n "$old_webroot" ] && [ -d "$old_webroot" ] && [ "$old_webroot" != "$WEBROOT" ]; then
-        log "HEADER" "Data Migration Required"
-        log "WARN" "The WebDAV root directory has changed."
-        log "INFO" "Old location: $old_webroot"
-        log "INFO" "New location: $WEBROOT"
-        
-        read -p "Do you want to move all data from the old to the new location? (y/N) " confirm
-        if [[ "$confirm" =~ ^[yY]$ ]]; then
-            log "INFO" "Starting data migration with rsync (this may take a while)..."
-            sudo mkdir -p "$WEBROOT"
-            sudo rsync -a --info=progress2 --remove-source-files "$old_webroot/" "$WEBROOT/"
-            log "SUCCESS" "Data migration completed."
-            sudo rmdir "$old_webroot" 2>/dev/null || log "INFO" "Old directory '$old_webroot' not removed."
-        else
-            log "INFO" "Data migration skipped by user."
-        fi
-    fi
 }
 
 run_raid_setup() {
@@ -243,8 +238,8 @@ run_raid_setup() {
 
 run_cleanup() {
     log "HEADER" "PHASE 1: System Cleanup"
-    log "WARN" "This operation will remove Nginx and its configurations."
-    log "WARN" "User data in '$WEBROOT' will NOT be touched."
+    log "WARN" "This operation will remove Nginx and all its WebDAV configurations."
+    log "WARN" "User data in your configured WebDAV directories will NOT be touched."
     
     read -p "Are you sure you want to proceed with the cleanup? (y/N) " confirm
     if [[ ! "$confirm" =~ ^[yY]$ ]]; then
@@ -259,7 +254,7 @@ run_cleanup() {
     sudo apt-get remove --purge -y 'nginx*' >/dev/null || true
     sudo apt-get autoremove -y >/dev/null || true
     
-    log "STEP" "Deleting residual configuration folders..."
+    log "STEP" "Deleting residual configuration folders and files..."
     sudo rm -rf /etc/nginx /var/lib/nginx
     sudo rm -f "$PASSFILE"
     
@@ -284,14 +279,17 @@ open_file_cache_errors on;
 EOL
     log "STEP" "Nginx performance tuned."
     
-    log "INFO" "Managing WebDAV Folders and Permissions in $WEBROOT"
-    sudo mkdir -p "$WEBROOT"
-    for u in "${USERS[@]}"; do
-        sudo mkdir -p "$WEBROOT/$u"
+    log "INFO" "Managing WebDAV Folders and Permissions"
+    for webroot in "${WEBROOTS[@]}"; do
+        log "STEP" "Setting up directory: $webroot"
+        sudo mkdir -p "$webroot"
+        for u in "${USERS[@]}"; do
+            sudo mkdir -p "$webroot/$u"
+        done
+        sudo chown -R www-data:www-data "$webroot"
+        sudo chmod -R 750 "$webroot"
     done
-    sudo chown -R www-data:www-data "$WEBROOT"
-    sudo chmod -R 750 "$WEBROOT"
-    log "STEP" "Folders and permissions set."
+    log "STEP" "Folders and permissions set for all locations."
     
     log "INFO" "Creating/updating users (does not overwrite passwords)"
     if [ ! -f "$PASSFILE" ]; then
@@ -320,14 +318,28 @@ EOL
     fi
     log "WARN" "Default passwords are set to '$DEFAULT_PASSWORD'. Change them using './users.sh passwd <username>'"
     
-    log "CONFIG" "Nginx: Creating configuration for the WebDAV site"
-    sudo tee "$CONF_FILE" >/dev/null <<EOL
+    log "CONFIG" "Nginx: Creating configurations for WebDAV sites"
+    # Clean up old configs before creating new ones
+    sudo rm -f /etc/nginx/sites-available/webdav_*
+    sudo rm -f /etc/nginx/sites-enabled/webdav_*
+    
+    for i in "${!WEBROOTS[@]}"; do
+        local current_webroot="${WEBROOTS[$i]}"
+        local current_port="${WEBDAV_PORTS[$i]}"
+        
+        # Sanitize webroot path to create a valid filename
+        local sanitized_name
+        sanitized_name=$(echo "$current_webroot" | tr -c '[:alnum:]' '_')
+        local current_conf_file="/etc/nginx/sites-available/webdav_${sanitized_name}"
+        
+        log "STEP" "Generating config for '$current_webroot' on port $current_port"
+        sudo tee "$current_conf_file" >/dev/null <<EOL
 server {
-    listen $WEBDAV_PORT;
+    listen $current_port;
     server_name _;
 
-    access_log $LOG_DIR/webdav_access.log;
-    error_log $LOG_DIR/$NGINX_ERROR_LOG_FILE;
+    access_log $LOG_DIR/webdav_access_${sanitized_name}.log;
+    error_log $LOG_DIR/${NGINX_ERROR_LOG_FILE};
 
     gzip on;
     gzip_vary on;
@@ -335,9 +347,9 @@ server {
     gzip_comp_level $GZIP_LEVEL;
     gzip_types text/plain text/css text/xml application/json application/javascript application/xml image/svg+xml;
     
-    set \$user_root $WEBROOT/;
+    set \$user_root $current_webroot/;
     if (\$remote_user != "$ADMIN_USER") {
-        set \$user_root "$WEBROOT/\$remote_user/";
+        set \$user_root "$current_webroot/\$remote_user/";
     }
     
     location / {
@@ -353,6 +365,9 @@ server {
     }
 }
 EOL
+        log "INFO" "Enabling site: $(basename "$current_conf_file")"
+        sudo ln -sf "$current_conf_file" "/etc/nginx/sites-enabled/$(basename "$current_conf_file")"
+    done
     
     log "CONFIG" "Creating management script '$MANAGEMENT_SCRIPT'"
     sudo tee "$MANAGEMENT_SCRIPT" >/dev/null <<EOM
@@ -398,13 +413,14 @@ EOM
     sudo chmod +x "$MANAGEMENT_SCRIPT"
     log "STEP" "Script '$MANAGEMENT_SCRIPT' created."
     
-    log "INFO" "Enabling Nginx site and restarting"
-    sudo ln -sf "$CONF_FILE" "/etc/nginx/sites-enabled/$(basename "$CONF_FILE")"
+    log "INFO" "Restarting Nginx to apply all changes"
     sudo nginx -t && sudo systemctl restart nginx
     
     log "HEADER" "Setup Completed Successfully"
     log "SUCCESS" "WebDAV server is active and configured!"
-    log "INFO" "Access: http://<RASPBERRY_IP>:$WEBDAV_PORT"
+    for i in "${!WEBROOTS[@]}"; do
+        log "INFO" "Access point: http://<RASPBERRY_IP>:${WEBDAV_PORTS[$i]} -> ${WEBROOTS[$i]}"
+    done
     log "INFO" "Nginx Error Log: $LOG_DIR/$NGINX_ERROR_LOG_FILE"
     log "INFO" "User Management: use 'sudo ./$MANAGEMENT_SCRIPT [command]'"
 }
@@ -426,7 +442,6 @@ case "$1" in
         ;;
     *)
         ask_for_settings
-        run_migration_if_needed
         run_setup
         ;;
 esac
