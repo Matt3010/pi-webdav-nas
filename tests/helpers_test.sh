@@ -45,6 +45,8 @@ expect_true "nested /mnt path is safe" is_safe_webroot "/mnt/storage/webdav"
 expect_false "root filesystem is blocked" is_safe_webroot "/"
 expect_false "top-level /etc is blocked" is_safe_webroot "/etc"
 expect_false "relative path is blocked" is_safe_webroot "srv/webdav"
+expect_false "Nginx variable marker in path is blocked" is_safe_webroot '/srv/$unsafe'
+expect_false "quote in path is blocked" is_safe_webroot '/srv/"unsafe'
 
 if grep -Eq 'chown[[:space:]]+-R|chmod[[:space:]]+-R' "$ROOT_DIR/webdav_setup.sh"; then
     printf 'not ok - script must not recursively chown/chmod WebDAV data\n'
@@ -58,6 +60,13 @@ if grep -Eq 'apt-get[[:space:]].*(purge|remove).*nginx|rm[[:space:]]+-rf[[:space
     failures=$((failures + 1))
 else
     printf 'ok - no destructive global Nginx cleanup\n'
+fi
+
+if grep -Fq 'migrate_legacy_installation' "$ROOT_DIR/webdav_setup.sh" && grep -Fq '/etc/nginx/webdav.passwd' "$ROOT_DIR/webdav_setup.sh"; then
+    printf 'ok - legacy installer artifacts have an explicit migration path\n'
+else
+    printf 'not ok - legacy installer artifacts need an explicit migration path\n'
+    failures=$((failures + 1))
 fi
 
 if grep -Fq "map \$remote_user \$pi_webdav_root_" "$ROOT_DIR/webdav_setup.sh"; then
