@@ -34,7 +34,8 @@ log() {
     local msg="$2"
     local color="$GREEN"
     local prefix="[INFO]"
-    local timestamp="[$(date '+%T')]"
+    local timestamp
+    timestamp="[$(date '+%T')]"
 
     case "$level" in
         HEADER)
@@ -338,7 +339,10 @@ write_nginx_map() {
         for i in "${!WEBROOTS[@]}"; do
             root="${WEBROOTS[$i]}"
             escaped_root=$(nginx_escape "$root")
+            # The dollar-prefixed names below are literal Nginx variables, not shell variables.
+            # shellcheck disable=SC2016
             printf 'map $remote_user $pi_webdav_root_%s {\n' "$i"
+            # shellcheck disable=SC2016
             printf '    default "%s/$remote_user/";\n' "$escaped_root"
             printf '    "%s" "%s/";\n' "$ADMIN_USER" "$escaped_root"
             printf '}\n\n'
@@ -682,7 +686,9 @@ run_raid_setup() {
     [[ "$confirm" == "ERASE" ]] || { log INFO "RAID creation cancelled."; return 0; }
 
     mdadm --create /dev/md0 --level="$raid_level" --raid-devices="${#selected_disks[@]}" "${selected_disks[@]}" --run
-    command -v udevadm >/dev/null 2>&1 && udevadm settle || true
+    if command -v udevadm >/dev/null 2>&1; then
+        udevadm settle || true
+    fi
     [[ -b /dev/md0 ]] || fatal "/dev/md0 was not created successfully."
 
     mkfs.ext4 -F /dev/md0
@@ -702,7 +708,9 @@ run_raid_setup() {
         touch /etc/mdadm/mdadm.conf
         grep -Fxq "$mdadm_line" /etc/mdadm/mdadm.conf || printf '%s\n' "$mdadm_line" >>/etc/mdadm/mdadm.conf
     fi
-    command -v update-initramfs >/dev/null 2>&1 && update-initramfs -u || true
+    if command -v update-initramfs >/dev/null 2>&1; then
+        update-initramfs -u || true
+    fi
 
     mount "$mount_point"
     log SUCCESS "RAID ${raid_level} created at /dev/md0 and mounted on ${mount_point}."
