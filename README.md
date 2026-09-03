@@ -28,6 +28,20 @@ Use one of these approaches:
 
 Basic Authentication credentials are protected only when the transport itself is trusted/encrypted.
 
+## Upgrading from the previous script
+
+The installer recognizes the previous project's Nginx files only when they use the legacy credential path `/etc/nginx/webdav.passwd`.
+
+During the first apply of the new version it:
+
+- copies the existing password hashes into `/etc/nginx/pi-webdav.passwd` if the new credential file does not exist;
+- disables matching legacy `webdav_*` sites so an old endpoint is not accidentally left active;
+- archives the matching legacy site files under `/etc/pi-webdav-nas/legacy-nginx/`;
+- leaves the original `/etc/nginx/webdav.passwd` untouched as a fallback;
+- never deletes existing WebDAV data.
+
+Because the old version did not persist its selected roots/ports, the first run of the new version asks you to configure them again. It does not attempt to guess or move your data.
+
 ## Requirements
 
 - Raspberry Pi OS, Debian, or Ubuntu with `systemd`.
