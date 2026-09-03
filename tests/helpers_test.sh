@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-# shellcheck source=../webdav_setup.sh
+# shellcheck disable=SC1091
 source "$ROOT_DIR/webdav_setup.sh"
 
 failures=0
@@ -60,7 +60,7 @@ else
     printf 'ok - no destructive global Nginx cleanup\n'
 fi
 
-if grep -Fq 'map $remote_user $pi_webdav_root_' "$ROOT_DIR/webdav_setup.sh"; then
+if grep -Fq "map \$remote_user \$pi_webdav_root_" "$ROOT_DIR/webdav_setup.sh"; then
     printf 'ok - user routing uses an Nginx map\n'
 else
     printf 'not ok - user routing must use an Nginx map\n'
