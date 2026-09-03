@@ -45,7 +45,7 @@ expect_true "nested /mnt path is safe" is_safe_webroot "/mnt/storage/webdav"
 expect_false "root filesystem is blocked" is_safe_webroot "/"
 expect_false "top-level /etc is blocked" is_safe_webroot "/etc"
 expect_false "relative path is blocked" is_safe_webroot "srv/webdav"
-expect_false "Nginx variable marker in path is blocked" is_safe_webroot '/srv/$unsafe'
+expect_false "Nginx variable marker in path is blocked" is_safe_webroot "/srv/\$unsafe"
 expect_false "quote in path is blocked" is_safe_webroot '/srv/"unsafe'
 
 if grep -Eq 'chown[[:space:]]+-R|chmod[[:space:]]+-R' "$ROOT_DIR/webdav_setup.sh"; then
