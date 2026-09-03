@@ -1,0 +1,9 @@
+# Local/editor files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.tmp
+
+# The setup installs the management command system-wide; do not commit generated local copies.
+users.sh

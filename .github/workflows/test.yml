@@ -1,0 +1,22 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Bash syntax
+        run: bash -n webdav_setup.sh tests/helpers_test.sh
+      - name: ShellCheck
+        run: shellcheck webdav_setup.sh tests/helpers_test.sh
+      - name: Helper and safety tests
+        run: bash tests/helpers_test.sh
