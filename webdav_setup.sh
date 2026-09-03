@@ -91,13 +91,18 @@ is_valid_size() {
 is_safe_webroot() {
     local path="$1"
     [[ "$path" == /* ]] || return 1
-    [[ "$path" != *        /|/bin|/boot|/dev|/etc|/home|/lib|/lib64|/proc|/root|/run|/sbin|/sys|/usr|/var)
+
+    case "$path" in
+        *$'\n'*|*$'\r'*|*'$'*|*'"'*|*\\*) return 1 ;;
+    esac
+
+    case "$path" in
+        /|/bin|/boot|/dev|/etc|/home|/lib|/lib64|/proc|/root|/run|/sbin|/sys|/usr|/var)
             return 1
             ;;
     esac
     return 0
 }
-
 normalize_webroot() {
     realpath -m -- "$1"
 }
